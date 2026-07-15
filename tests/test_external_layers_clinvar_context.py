@@ -244,6 +244,15 @@ class ExternalClinvarContextTests(EvidenceImportTestBase):
             self.assertEqual(result["sample_matches"]["records"][0]["clinvar"]["clinvar_id"], "12345")
             self.assertIn("evidence retrieval for host-agent interpretation", result["notes"][0])
 
+            annotation_result = build_clinvar_annotation_index(
+                output,
+                Path(tmp) / "clinvar.annotations.json",
+            )
+            self.assertEqual(annotation_result["gene_annotation_index"]["GENE1"], [0])
+            sample_indexed_result = fetch_gene_evidence("GENE1", db, matches_path=output)
+            self.assertEqual(sample_indexed_result["sample_matches"]["lookup_mode"], "annotation_index")
+            self.assertEqual(sample_indexed_result["sample_matches"]["matched_variants"], 1)
+
             gene_index = build_clinvar_gene_index(db)
             self.assertEqual(gene_index["status"], "completed")
             self.assertEqual(gene_index["gene_links"], 3)

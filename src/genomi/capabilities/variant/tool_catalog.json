@@ -10,6 +10,7 @@
         "variant.resolve"
       ],
       "operations": [
+        "variant.gather_focused_context",
         "variant.gather_gene_context",
         "variant.gather_allele_context",
         "variant.resolve"
@@ -195,6 +196,61 @@
       "mutating": false,
       "external_io": [],
       "data_access": [
+        "local_private_evidence_files"
+      ],
+      "discovery_role": "focused_tool"
+    },
+    "variant.gather_focused_context": {
+      "capability": "variant-evidence",
+      "namespace": "variant",
+      "description": "Gather bounded existing evidence for several explicit rsID, gene, or medication targets in one operation.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "rsids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 8
+          },
+          "genes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 8
+          },
+          "medications": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 8
+          }
+        },
+        "additionalProperties": false
+      },
+      "skill": "skills/variant-evidence/SKILL.md",
+      "area": "variant",
+      "requires": [
+        "explicit target"
+      ],
+      "produces": [
+        "focused_context_batch"
+      ],
+      "context_optional": [
+        "db",
+        "matches",
+        "genome_build"
+      ],
+      "privacy_scope": "target_scoped",
+      "operation_scope": "read",
+      "mutating": false,
+      "external_io": [],
+      "data_access": [
+        "selected_public_targets",
+        "active_genome_index_when_selected",
         "local_private_evidence_files"
       ],
       "discovery_role": "focused_tool"

@@ -205,6 +205,11 @@ def build_clinvar_annotation_index(
 
     annotations = [_build_clinvar_annotation(group) for group in grouped.values()]
     annotations.sort(key=_clinvar_annotation_sort_key)
+    gene_annotation_index: dict[str, list[int]] = {}
+    for annotation_index, annotation in enumerate(annotations):
+        for gene in annotation["genes"]:
+            gene_annotation_index.setdefault(gene, []).append(annotation_index)
+
     clinical_significance_counts: Counter[str] = Counter()
     review_status_counts: Counter[str] = Counter()
     gene_counts: Counter[str] = Counter()
@@ -250,6 +255,7 @@ def build_clinvar_annotation_index(
             "evidence_group_counts": _ordered_candidate_evidence_group_counts(evidence_group_counts),
         },
         "annotations": annotations,
+        "gene_annotation_index": gene_annotation_index,
         "evidence_context": evidence_context(
             "research",
             reason="ClinVar annotations are static source fields with explicit match provenance; interpretation still belongs in intent research.",

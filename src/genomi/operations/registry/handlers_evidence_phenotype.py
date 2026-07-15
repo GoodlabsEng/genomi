@@ -79,6 +79,81 @@ def _evidence_gather_gene(params: JsonObject) -> JsonObject:
     )
 
 
+def _evidence_gather_focused_context(params: JsonObject) -> JsonObject:
+    from .table import call_operation
+
+    rsids = _list_str(params, "rsids")
+    genes = _list_str(params, "genes")
+    medications = _list_str(params, "medications")
+    targets: list[tuple[str, str, str, JsonObject]] = []
+    targets.extend(
+        (
+            "rsid",
+            rsid,
+            "variant.resolve",
+            {
+                "query": rsid,
+                "include_active_genome_index": True,
+                "include_known_active_genome_indexes": False,
+            },
+        )
+        for rsid in rsids
+    )
+    targets.extend(
+        ("gene", gene, "variant.gather_gene_context", {"gene": gene})
+        for gene in genes
+    )
+    targets.extend(
+        (
+            "medication",
+            medication,
+            "pharmacogenomics.review_medication",
+            {"drug": medication, "include_stored_research": False, "limit": 10},
+        )
+        for medication in medications
+    )
+    if not targets:
+        raise OperationError(
+            "needs_input",
+            "Provide at least one rsID, gene, or medication target.",
+        )
+    if len(targets) > 8:
+        raise OperationError(
+            "invalid_params",
+            "Focused context accepts at most eight combined targets.",
+        )
+
+    results: list[JsonObject] = []
+    for target_type, target, operation, operation_params in targets:
+        try:
+            result = call_operation(operation, operation_params)
+            results.append(
+                {
+                    "target_type": target_type,
+                    "target": target,
+                    "operation": operation,
+                    "status": "completed",
+                    "result": result,
+                }
+            )
+        except OperationError as error:
+            results.append(
+                {
+                    "target_type": target_type,
+                    "target": target,
+                    "operation": operation,
+                    "status": "unavailable",
+                    "error": error.to_json(operation=operation),
+                }
+            )
+
+    return {
+        "status": "completed",
+        "target_count": len(targets),
+        "results": results,
+    }
+
+
 def _risk_investigate(params: JsonObject) -> JsonObject:
     include_active = _bool(params, "include_active_genome_index", False) or params.get("matches") not in (None, "")
     if include_active:

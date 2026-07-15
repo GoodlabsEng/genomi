@@ -400,9 +400,68 @@ def _clinvar_gene_summary(
     }
 
 
+def _sample_gene_matches_from_annotation_index(
+    gene: str,
+    matches_path: Path,
+    *,
+    limit: int,
+) -> dict[str, Any] | None:
+    annotation_path = matches_path.with_name("clinvar.annotations.json")
+    if not annotation_path.exists():
+        return None
+
+    payload = json.loads(annotation_path.read_text(encoding="utf-8"))
+    annotations = payload.get("annotations")
+    gene_index = payload.get("gene_annotation_index")
+    if not isinstance(annotations, list) or not isinstance(gene_index, dict):
+        return None
+
+    raw_indexes = gene_index.get(gene, [])
+    if not isinstance(raw_indexes, list):
+        return None
+
+    clinical_significance: Counter[str] = Counter()
+    review_status: Counter[str] = Counter()
+    records: list[dict[str, Any]] = []
+    total_records = 0
+    matched_variants = 0
+    for raw_index in raw_indexes:
+        if not isinstance(raw_index, int) or raw_index < 0 or raw_index >= len(annotations):
+            continue
+        annotation = annotations[raw_index]
+        if not isinstance(annotation, dict):
+            continue
+        matched_variants += 1
+        clinvar = annotation.get("clinvar")
+        if isinstance(clinvar, dict):
+            for value, count in clinvar.get("clinical_significance_counts") or []:
+                clinical_significance[str(value)] += int(count)
+                total_records += int(count)
+            for value, count in clinvar.get("review_status_counts") or []:
+                review_status[str(value)] += int(count)
+        if len(records) < limit:
+            records.append(annotation)
+
+    return {
+        "matches_path": str(matches_path),
+        "annotation_index_path": str(annotation_path),
+        "lookup_mode": "annotation_index",
+        "total_records": total_records,
+        "matched_variants": matched_variants,
+        "clinical_significance_counts": clinical_significance.most_common(),
+        "review_status_counts": review_status.most_common(),
+        "record_limit": limit,
+        "records": records,
+    }
+
+
 def _sample_gene_matches(gene: str, matches_path: Path, *, limit: int) -> dict[str, Any]:
     if not matches_path.exists():
         raise FileNotFoundError(matches_path)
+
+    indexed = _sample_gene_matches_from_annotation_index(gene, matches_path, limit=limit)
+    if indexed is not None:
+        return indexed
 
     total = 0
     clinical_significance: Counter[str] = Counter()
@@ -425,6 +484,7 @@ def _sample_gene_matches(gene: str, matches_path: Path, *, limit: int) -> dict[s
 
     return {
         "matches_path": str(matches_path),
+        "lookup_mode": "jsonl_scan",
         "total_records": total,
         "clinical_significance_counts": clinical_significance.most_common(),
         "review_status_counts": review_status.most_common(),
@@ -438,7 +498,7 @@ def _gene_query_parts(
     gene: str,
     genome_build: str,
 ) -> tuple[str, str, tuple[str, ...], str]:
-    indexed_links = int(connection.execute("select count(*) as records from clinvar_variant_genes").fetchone()["records"])
+    indexed_links = connection.execute("select 1 from clinvar_variant_genes limit 1").fetchone()
     if indexed_links:
         return (
             "clinvar_variant_genes cg join clinvar_variants cv on cv.rowid = cg.variant_rowid",

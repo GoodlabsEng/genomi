@@ -31,6 +31,10 @@ _EMBEDDED_LOCAL_PATH_RE = re.compile(
 def present_result(operation: str, result: JsonObject) -> JsonObject:
     if operation == "genomi.parse_source":
         return _present_active_genome_index_parse(result)
+    if operation == "variant.resolve":
+        return _present_variant_resolution(result)
+    if operation == "variant.gather_focused_context":
+        return _present_focused_context(result)
     if operation == "decode.build_dashboard_evidence":
         return _present_decode_build_dashboard_evidence(result)
     if operation == "decode.render_dashboard":
@@ -43,6 +47,167 @@ def present_result(operation: str, result: JsonObject) -> JsonObject:
 
 
 # --- specialized presenters -----------------------------------------------
+
+def _present_variant_resolution(result: JsonObject) -> JsonObject:
+    envelope = _compact_envelope(result.get("evidence_envelope"))
+    payload: JsonObject = {}
+    headline = envelope.get("headline") if isinstance(envelope, dict) else None
+    if headline:
+        payload["headline"] = headline
+    if envelope:
+        payload["evidence_envelope"] = envelope
+    query = result.get("query") if isinstance(result.get("query"), dict) else {}
+    payload.update({
+        "query": _select(
+            query,
+            ("text", "rsid", "chrom", "pos", "ref", "alt", "region", "genome_build"),
+        ),
+        "resolved_targets": _compact_record_list(result.get("resolved_targets")),
+        "sample_context": _compact_variant_sample_context(result.get("sample_context")),
+        "public_context": _compact_variant_public_context(result.get("public_context")),
+        "support_context": _compact_variant_support_context(result.get("support_context")),
+        "target_inventory": _compact_generic_value(result.get("target_inventory")),
+        "unanswered_answer_components": _compact_record_list(
+            result.get("unanswered_answer_components")
+        ),
+        "warnings": result.get("warnings") or [],
+    })
+    return _drop_none(payload)
+
+
+def _present_focused_context(result: JsonObject) -> JsonObject:
+    presented_results = []
+    for item in result.get("results") or []:
+        if not isinstance(item, dict):
+            continue
+        presented_item = _select(
+            item,
+            ("target_type", "target", "operation", "status"),
+        )
+        operation = item.get("operation")
+        nested_result = item.get("result")
+        if isinstance(operation, str) and isinstance(nested_result, dict):
+            presented_item["result"] = present_result(operation, nested_result)
+        elif isinstance(item.get("error"), dict):
+            presented_item["error"] = _compact_generic_value(item["error"])
+        presented_results.append(presented_item)
+
+    return _drop_none(
+        {
+            "status": result.get("status"),
+            "target_count": result.get("target_count"),
+            "results": presented_results,
+        }
+    )
+
+
+def _compact_variant_sample_context(value: object) -> JsonObject:
+    if not isinstance(value, dict):
+        return {}
+    searched = value.get("searched_active_genome_indexes") or []
+    compact = _select(value, ("count", "searched_known_active_genome_indexes"))
+    compact["active_genome_indexes_searched"] = len(searched)
+    compact["matches"] = [
+        _select(
+            match,
+            (
+                "target",
+                "rsid",
+                "chrom",
+                "pos",
+                "ref",
+                "alt",
+                "genotype",
+                "observed_alleles",
+                "filter",
+                "is_variant",
+                "record_kind",
+                "depth",
+                "genotype_quality",
+                "agi_source_format",
+                "agi_source_kind",
+                "selection",
+            ),
+        )
+        for match in (value.get("matches") or [])[:MAX_LIST_ITEMS]
+        if isinstance(match, dict)
+    ]
+    match_count = len(value.get("matches") or [])
+    if match_count > MAX_LIST_ITEMS:
+        compact["matches_omitted_count"] = match_count - MAX_LIST_ITEMS
+    return compact
+
+
+def _compact_variant_public_context(value: object) -> JsonObject:
+    if not isinstance(value, dict):
+        return {}
+    compact: JsonObject = {}
+    for key in (
+        "clinvar_by_rsid",
+        "clinvar_by_allele",
+        "clinvar_by_locus",
+        "population_frequencies",
+        "reviewed_research",
+    ):
+        records = value.get(key) or []
+        compact[key] = [
+            _truncate_record(record)
+            for record in records[:MAX_LIST_ITEMS]
+        ]
+        if len(records) > MAX_LIST_ITEMS:
+            compact[f"{key}_omitted_count"] = len(records) - MAX_LIST_ITEMS
+    return compact
+
+
+def _compact_variant_support_context(value: object) -> JsonObject:
+    if not isinstance(value, dict):
+        return {}
+    records = value.get("genotype_support") or []
+    compact_records = []
+    for record in records[:MAX_LIST_ITEMS]:
+        compact = _select(
+            record,
+            (
+                "chrom",
+                "pos",
+                "ref",
+                "alt",
+                "genome_build",
+                "support_status",
+                "evidence_class",
+                "accepted_report_evidence_classes",
+                "genotype",
+                "zygosity",
+                "depth",
+                "genotype_quality",
+                "filter",
+            ),
+        )
+        if isinstance(record, dict):
+            if isinstance(record.get("sample_observation"), dict):
+                compact["sample_observation"] = _compact_generic_value(
+                    record["sample_observation"]
+                )
+            if isinstance(record.get("site_observation"), dict):
+                compact["site_observation"] = _compact_generic_value(
+                    record["site_observation"]
+                )
+        compact_records.append(compact)
+    compact_context: JsonObject = {"genotype_support": compact_records}
+    if len(records) > MAX_LIST_ITEMS:
+        compact_context["genotype_support_omitted_count"] = (
+            len(records) - MAX_LIST_ITEMS
+        )
+    return compact_context
+
+
+def _compact_record_list(value: object) -> list[object]:
+    if not isinstance(value, list):
+        return []
+    records = [_truncate_record(item) for item in value[:MAX_LIST_ITEMS]]
+    if len(value) > MAX_LIST_ITEMS:
+        records.append({"omitted_count": len(value) - MAX_LIST_ITEMS})
+    return records
 
 def _present_active_genome_index_parse(result: JsonObject) -> JsonObject:
     active = _compact_active_index(result.get("active_genome_index"))

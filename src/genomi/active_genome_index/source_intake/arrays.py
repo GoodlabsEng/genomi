@@ -164,6 +164,9 @@ def _iter_livingdna_rows(handle: TextIO) -> Iterator[JsonObject]:
 
 
 _CONSUMER_ARRAY_SPECS: dict[str, _ConsumerArraySpec] = {
+    "nucleus": _ConsumerArraySpec(
+        row_iterator=_iter_23andme_rows,
+    ),
     "23andme": _ConsumerArraySpec(
         row_iterator=_iter_23andme_rows,
     ),

@@ -182,6 +182,43 @@ class GenomiRuntimeArrayIntakeTests(ActiveGenomeIndexContractFixtureMixin, Genom
             finally:
                 os.chdir(previous)
 
+    def test_active_genome_index_parse_accepts_nucleus_array_text(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            previous = os.getcwd()
+            os.chdir(tmp)
+            try:
+                raw = Path("nucleus-array.txt")
+                raw.write_text(
+                    "#Nucleus Genomics array-like file\n"
+                    "#Nucleus array-like format version v1.4.7\n"
+                    "#\n"
+                    "#rsid  chromosome position genotype\n"
+                    "rs123\t1\t100\tAG\n"
+                    "rs999\t2\t200\t--\n",
+                    encoding="utf-8",
+                )
+
+                self.approve_access()
+                parsed = call_operation("genomi.parse_source", {"source": str(raw)})
+
+                self.assertEqual(parsed["status"], "completed")
+                self.assertEqual(parsed["source_format"], "nucleus")
+                self.assertEqual(parsed["source_kind"], "consumer_genotype_array")
+                self.assertEqual(parsed["provider"], "nucleus")
+                self.assertEqual(parsed["genome_build"], "GRCh37")
+                self.assertEqual(parsed["active_genome_index"]["agi_source_format"], "nucleus")
+                self.assertEqual(parsed["active_genome_index"]["agi_source_provider"], "nucleus")
+
+                lookup = call_operation("variant.resolve", {"rsid": "rs123"})
+                self.assertEqual(lookup["sample_context"]["count"], 1)
+                match = lookup["sample_context"]["matches"][0]
+                self.assertEqual(match["genotype"], "AG")
+                self.assertEqual(match["agi_source_format"], "nucleus")
+                self.assertEqual(match["record_kind"], "array_call")
+                self.assertEqual(_hidden_path_leaks(parsed, raw), [])
+            finally:
+                os.chdir(previous)
+
     def test_23andme_parse_rebuilds_incomplete_array_index(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             previous = os.getcwd()

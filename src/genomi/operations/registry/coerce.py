@@ -4,7 +4,7 @@ from pathlib import Path
 
 from ...evidence import init_evidence_db
 from ...runtime import context as runtime_context
-from ...runtime.paths import expand_user_path, shared_evidence_db_path
+from ...runtime.paths import CLINVAR_MATCHES_NAME, expand_user_path, shared_evidence_db_path
 from .errors import JsonObject, OperationError
 from .model import _operation_parameter_defaults
 
@@ -142,6 +142,12 @@ def _with_context(
             resolved["db"] = active.get("evidence_db")
         if matches and not resolved.get("matches"):
             resolved["matches"] = active.get("matches")
+            if not resolved["matches"] and active.get("agi_path"):
+                # Older consumer-array records omit this path even after matching.
+                # Resolve only the approved run's standard artifact, without writing during reads.
+                materialized = _expanded_path(active["agi_path"]).with_name(CLINVAR_MATCHES_NAME)
+                if materialized.is_file():
+                    resolved["matches"] = str(materialized)
         if shared_db and not resolved.get("shared_db"):
             resolved["shared_db"] = active.get("shared_evidence_db")
         if reference_fasta and not resolved.get("reference_fasta"):

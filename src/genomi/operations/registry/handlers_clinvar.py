@@ -4,8 +4,9 @@ from pathlib import Path
 
 from ...active_genome_index.active_genome_index import ActiveGenomeIndexNeed, ActiveGenomeIndexReader
 from ...capabilities.clinvar import static_annotation
+from ...runtime import context as runtime_context
 from ...runtime.paths import CLINVAR_MATCHES_NAME
-from .agi_access import open_agi
+from .agi_access import open_agi, resolve_agi_record
 from .coerce import (
     _bool,
     _optional_path,
@@ -29,7 +30,8 @@ def _clinvar_match(params: JsonObject) -> JsonObject:
             "Select or parse an Active Genome Index before ClinVar matching.",
         )
     output = resolved.get("output") or str(agi_path.with_name(CLINVAR_MATCHES_NAME))
-    return static_annotation.match_static_clinvar_from_active_genome_index(
+    run = resolve_agi_record(params, require_approved=True)
+    result = static_annotation.match_static_clinvar_from_active_genome_index(
         reader,
         evidence_db=_path(resolved, "db"),
         output=Path(str(output)),
@@ -38,6 +40,15 @@ def _clinvar_match(params: JsonObject) -> JsonObject:
         operation="clinvar.match_variants",
         intent="ClinVar matching for this Active Genome Index",
     )
+    if run is not None and result.get("status") in {"completed", "cached"} and result.get("output"):
+        # Gene lookups resolve auxiliary artifacts from this run, not the active selection.
+        run = runtime_context.save_agi_to_registry(
+            {**run, "matches": str(Path(result["output"]).resolve())}
+        )
+        context = runtime_context.load_context()
+        context.setdefault("agis", {})[str(run["agi_id"])] = run
+        runtime_context.save_context(context)
+    return result
 
 
 def _clinvar_scan(params: JsonObject) -> JsonObject:

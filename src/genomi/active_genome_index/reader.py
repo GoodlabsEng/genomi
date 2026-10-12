@@ -323,6 +323,34 @@ class ActiveGenomeIndexReader:
             min_genotype_quality=min_genotype_quality,
         )
 
+    def normalized_allele_metadata(self) -> JsonObject:
+        """Describe the completed derived allele index without scanning original rows."""
+        from .normalized_alleles import normalized_allele_index_metadata
+        with self.connect() as connection:
+            return normalized_allele_index_metadata(connection)
+
+    def resolve_allele_targets(self, targets: list[JsonObject], *, reference_fasta: Path,
+                              expected_reference_sha256: str, deadline: float,
+                              observed_only: bool = False) -> JsonObject:
+        """Resolve exact public targets with original genotype and confidence context."""
+        from .allele_resolver import resolve_allele_targets
+        return resolve_allele_targets(self, targets, reference_fasta=reference_fasta,
+            expected_reference_sha256=expected_reference_sha256,
+            deadline=deadline, observed_only=observed_only)
+
+    def query_source_identifier(self, rsid: str, *, limit: int = 65) -> list[JsonObject]:
+        """Read an unmapped source ID within verified contigs before applying LIMIT.
+
+        These original calls do not establish any public allele identity. A caller
+        may use their coordinates as resolver anchors, retaining mapping uncertainty.
+        """
+        from ._agi_query import _query_offsets
+        self.normalized_allele_metadata()
+        return _query_offsets(self.agi_path, """select r.offset,r.sample_index
+            from records r where r.rsid=? and exists(
+                select 1 from chromosome_aliases ca where ca.alias=r.chrom)
+            order by r.chrom_sort,r.pos limit ?""", [rsid, limit])
+
     @contextlib.contextmanager
     def connect(self) -> Iterator[sqlite3.Connection]:
         """A read-only connection for bespoke SQL (PRS dosage, ancestry overlap,

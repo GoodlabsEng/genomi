@@ -145,3 +145,9 @@ __all__ = [
     'ActiveGenomeIndexReader',
     'open_reader',
 ]
+
+from .normalized_alleles import (
+    write_normalized_allele_index as write_normalized_allele_index,
+    normalized_allele_index_metadata as normalized_allele_index_metadata,
+    NORMALIZED_ALLELE_SCHEMA_VERSION as NORMALIZED_ALLELE_SCHEMA_VERSION,
+)

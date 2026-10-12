@@ -227,6 +227,28 @@ evidence sources that keep the answer honest.
 | Journal | A running log of what you explored, what mattered, and which evidence supported it. |
 | Skills | Agent instructions for routing questions, asking for approval, preserving source priors, and answering clearly. |
 
+### Enriched-index batch resolution API
+
+Preparation callers can install normalized observed alleles inside an existing
+Active Genome Index with `write_normalized_allele_index` from
+`genomi.active_genome_index.active_genome_index`. It consumes a row iterator,
+verified chromosome aliases and source/reference identities in one transaction.
+Original records remain unchanged; completion metadata is written last.
+
+`reader.resolve_allele_targets(targets, reference_fasta=...,
+expected_reference_sha256=..., deadline=..., observed_only=...)` returns one
+inventory of exact matches, original calls, target dosage, call assessment and
+reference/unknown outcomes. The caller must supply a verified reference identity.
+A projected base from a larger sequence change is distinct from an exact complete
+allele. Duplicate observations retain the weakest confidence and conflicting
+calls remain unresolved.
+
+Gene callers may use `observed_only=True` after resolving public gene annotations.
+The inventory counts all exact observed candidates before assessing at most 100
+prioritized targets. Returned, omitted and partial counts describe that bound;
+they never establish a whole-gene negative. Public clinical enrichment remains a
+separate caller responsibility.
+
 ### Bringing your own genome
 
 Genomi reads your DNA from wherever it already lives. Point it at any VCF or

@@ -18,12 +18,14 @@ def source_row(pos, ref='A', alt='C', gt='0/1', fmt='GT:DP:GQ', sample=None, inf
         sample = gt + ':30:99'
     return f'1\t{pos}\t{identifier}\t{ref}\t{alt}\t60\tPASS\t{info}\t{fmt}\t{sample}\n'
 
-def fixture(name, lines, keys=(), provider='vcf', array=None):
+def fixture(name, lines, keys=(), provider='vcf', array=None, reference_overrides=()):
     root = OUT / name
     root.mkdir(exist_ok=True)
     reference = root / 'reference.fa'
     bases = list('A' * 1000)
     bases[99:102] = list('GAT')
+    for pos, base in reference_overrides:
+        bases[pos - 1] = base
     reference.write_text('>chr1\n' + ''.join(bases) + '\n')
     pysam.faidx(str(reference))
     digest = hashlib.sha256(reference.read_bytes()).hexdigest()
@@ -163,6 +165,19 @@ run('array_missing', lambda : arr('array_missing', [('rs1004', 101, '--')], 'no_
 run('array_unrelated_missing_probe', lambda : arr('array_other', [('rs1004', 101, 'AC'), ('i100', 101, '--')], 'observed', 'called', True, 1))
 run('array_same_probe_missing', lambda : arr('array_same', [('rs1004', 101, 'AC'), ('rs1004', 101, '--')], 'no_call', 'no_call', True, None))
 run('array_conflicting_probes', lambda : arr('array_conflict', [('rs1004', 101, 'AC'), ('i100', 101, 'CC')], 'unavailable', 'conflicting', True, None))
+
+def array_unknown_target(name, ref, alt):
+    (resolve, *_) = fixture(name, [], provider='23andme', array=[('rs1004', 101, 'CC')],
+                          reference_overrides=[(101, ref)])
+    envelope = resolve([target(101, ref=ref, alt=alt, rsid='rs1004')])
+    row = envelope['results'][0]
+    assert envelope['relevant_target_ordinals'] == [], envelope
+    assert row['reference_reason'] == 'array_allele_model_unsupported', row
+    assert row['call_assessment']['alleles'] == ['C', 'C'], row
+    assert row['source_records'][0]['genotype'] == 'CC', row
+    return status(row, 'unavailable', False, None, 'called')
+run('array_unknown_reference_does_not_invent_absence', lambda : array_unknown_target('array_unknown_ref', 'N', 'C'))
+run('array_unknown_alternate_is_unsupported', lambda : array_unknown_target('array_unknown_alt', 'A', 'N'))
 
 def timeout_partial():
     (resolve, *_) = fixture('timeout', [source_row(200), source_row(210)], [(1, 200, 'A', 'C', 'C', 1), (2, 210, 'A', 'C', 'C', 1)])

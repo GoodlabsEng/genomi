@@ -586,8 +586,12 @@ def _resolve_target(connection: sqlite3.Connection, target: dict, hits: list[dic
                           reference_reason=None if dosage is not None and dosage > 0 else "target_dosage_unresolved")
             return result
         if array:
-            if len(target["ref"]) != 1 or len(target["alt"]) != 1 or any(
-                base not in "ACGT" for base in assessment["alleles"]
+            if (
+                len(target["ref"]) != 1
+                or len(target["alt"]) != 1
+                or target["ref"] not in "ACGT"
+                or target["alt"] not in "ACGT"
+                or any(base not in "ACGT" for base in assessment["alleles"])
             ):
                 result["reference_reason"] = "array_allele_model_unsupported"
             else:

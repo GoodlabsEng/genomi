@@ -179,6 +179,114 @@ def array_unknown_target(name, ref, alt):
 run('array_unknown_reference_does_not_invent_absence', lambda : array_unknown_target('array_unknown_ref', 'N', 'C'))
 run('array_unknown_alternate_is_unsupported', lambda : array_unknown_target('array_unknown_alt', 'A', 'N'))
 
+def array_negative_requires_target_alleles():
+    for provider in ('23andme', 'nucleus'):
+        for genotype in ('TC', 'AC'):
+            name = f'array_negative_{provider}_{genotype}'
+            (resolve, *_) = fixture(name, [], provider=provider,
+                                   array=[('rs1004', 200, genotype)])
+            row = resolve([target(200, alt='G', rsid='rs1004')])['results'][0]
+            assert row['reference_reason'] == 'array_allele_model_unsupported', row
+            assert row['call_assessment']['alleles'] == list(genotype), row
+            assert row['call_assessment']['quality'] == 'unknown', row
+            assert row['source_records'][0]['genotype'] == genotype, row
+            assert 'reference_scope' not in row, row
+            status(row, 'unavailable', False, None, 'called')
+run('array_negative_requires_target_alleles', array_negative_requires_target_alleles)
+
+def array_literal_positives_keep_third_alleles():
+    for provider in ('23andme', 'nucleus'):
+        for genotype in ('AG', 'CG', 'TG'):
+            name = f'array_positive_{provider}_{genotype}'
+            (resolve, *_) = fixture(name, [], provider=provider,
+                                   array=[('rs1004', 200, genotype)])
+            row = resolve([target(200, alt='G', rsid='rs1004')])['results'][0]
+            assert row['call_assessment']['alleles'] == list(genotype), row
+            assert row['call_assessment']['quality'] == 'unknown', row
+            assert row['source_records'][0]['genotype'] == genotype, row
+            status(row, 'observed', True, 1, 'called')
+run('array_literal_positives_keep_third_alleles', array_literal_positives_keep_third_alleles)
+
+def other_snv_cannot_supply_indel_zero():
+    for provider in ('vcf', 'gvcf'):
+        (resolve, *_) = fixture(f'other_indel_{provider}', [source_row(200)],
+                               [(1, 200, 'A', 'C', 'C', 1)], provider=provider)
+        row = resolve([target(200, alt='AT')])['results'][0]
+        assert row['reference_reason'] == 'sequence_allele_not_identical', row
+        assert row['call_assessment']['alleles'] == ['A', 'C'], row
+        assert row['call_assessment']['quality'] == 'pass', row
+        assert row['source_records'][0]['genotype'] == '0/1', row
+        status(row, 'unavailable', False, None, 'called')
+run('other_snv_cannot_supply_indel_zero', other_snv_cannot_supply_indel_zero)
+
+def other_snv_zero_requires_qualified_call():
+    cases = (
+        ('pass', 'PASS', 'GT:DP:GQ', '0/1:30:99', 'pass', None),
+        ('low', 'PASS', 'GT:DP:GQ', '0/1:4:5', 'low', 'depth_below_threshold'),
+        ('unknown', 'PASS', 'GT:DP:GQ', '0/1:.:.', 'unknown', 'depth_missing'),
+        ('sample_filter', 'PASS', 'GT:DP:GQ:FT', '0/1:30:99:LowQual', 'low', 'sample_filter_failed'),
+        ('record_filter', 'LowQual', 'GT:DP:GQ', '0/1:30:99', 'low', 'record_filter_failed'),
+        ('unapplied_filter', '.', 'GT:DP:GQ', '0/1:30:99', 'unknown', 'record_filter_not_applied'),
+    )
+    for provider in ('vcf', 'gvcf'):
+        for name, record_filter, fmt, sample, quality, reason in cases:
+            line = source_row(200, fmt=fmt, sample=sample).replace('\tPASS\t', f'\t{record_filter}\t')
+            (resolve, *_) = fixture(f'other_snv_{provider}_{name}', [line],
+                                   [(1, 200, 'A', 'C', 'C', 1)], provider=provider)
+            absent, observed = resolve([target(200, alt='G'), target(200)])['results']
+            assert absent['call_assessment']['alleles'] == ['A', 'C'], absent
+            assert absent['call_assessment']['quality'] == quality, absent
+            assert absent['source_records'][0]['genotype'] == '0/1', absent
+            assert absent['reference_reason'] == reason, absent
+            if reason is None:
+                status(absent, 'not_observed', False, 0, 'called')
+            else:
+                assert reason in absent['call_assessment']['quality_reasons'], absent
+                status(absent, 'unavailable', False, None, 'called')
+            assert observed['call_assessment']['quality'] == quality, observed
+            status(observed, 'observed', True, 1, 'called')
+run('other_snv_zero_requires_qualified_call', other_snv_zero_requires_qualified_call)
+
+def multi_ref_qualified_anchor():
+    for provider in ('vcf', 'gvcf'):
+        for alt in ('G', 'G,<NON_REF>'):
+            (resolve, *_) = fixture(f'anchor_{provider}_{alt}', [source_row(
+                100, ref='GAT', alt=alt, fmt='GT:DP:GQ:MIN_DP', sample='0/0:30:99:30',
+            )], provider=provider)
+            row = resolve([target(100, ref='G', alt='C')])['results'][0]
+            assert row['call_assessment']['alleles'] == ['GAT', 'GAT'], row
+            assert row['source_records'][0]['ref'] == 'GAT', row
+            assert row['source_records'][0]['genotype'] == '0/0', row
+            status(row, 'reference_confirmed', False, 0, 'called')
+            interior = resolve([target(101)])['results'][0]
+            reason = ('plain_vcf_reference_projection_unsupported' if provider == 'vcf'
+                      else 'unsupported_source_reference_span')
+            assert interior['reference_reason'] == reason, interior
+            status(interior, 'unavailable', False, None, 'called')
+            indel = resolve([target(100, ref='G', alt='GT')])['results'][0]
+            assert indel['reference_reason'] == 'unsupported_reference_projection', indel
+            status(indel, 'unavailable', False, None, 'called')
+run('multi_ref_qualified_anchor_and_projection_bounds', multi_ref_qualified_anchor)
+
+def multi_ref_anchor_vetoes():
+    cases = (
+        ('wrong_ref', 'GAC', '0/0:30:99:30', (), 'unavailable', 'source_reference_sequence_mismatch'),
+        ('overlap', 'GAT', '0/0:30:99:30', (source_row(100, ref='G', alt='C'),),
+         'unavailable', 'source_genotype_unresolved'),
+        ('partial', 'GAT', '0/.:30:99:30', (), 'no_call', 'source_genotype_no_call'),
+        ('low', 'GAT', '0/0:4:5:4', (), 'unavailable', 'depth_below_threshold'),
+        ('unknown', 'GAT', '0/0:30:99:.', (), 'unavailable', 'minimum_depth_missing'),
+    )
+    for provider in ('vcf', 'gvcf'):
+        for name, ref, sample, extra, expected, reason in cases:
+            (resolve, *_) = fixture(f'anchor_veto_{provider}_{name}', [source_row(
+                100, ref=ref, alt='G,<NON_REF>', fmt='GT:DP:GQ:MIN_DP', sample=sample,
+            ), *extra], provider=provider)
+            row = resolve([target(100, ref='G', alt='C')])['results'][0]
+            assert row['reference_reason'] == reason, row
+            status(row, expected, False, None)
+run('multi_ref_anchor_vetoes', multi_ref_anchor_vetoes)
+
 def timeout_partial():
     (resolve, *_) = fixture('timeout', [source_row(200), source_row(210)], [(1, 200, 'A', 'C', 'C', 1), (2, 210, 'A', 'C', 'C', 1)])
     original = resolver._resolve_target

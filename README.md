@@ -243,6 +243,23 @@ A projected base from a larger sequence change is distinct from an exact complet
 allele. Duplicate observations retain the weakest confidence and conflicting
 calls remain unresolved.
 
+Consumer-array calls use reported plus-strand letters. Exact positive target
+observations remain available when another called base is a third allele, such as
+CG against A>G. Zero or reference inference requires every called base to belong
+to the requested REF/ALT model. Unsupported comparisons retain the original
+genotype without inferring dosage or complementing letters.
+
+A different sequencing allele can establish zero target dosage only for a
+single-base requested REF/ALT and a passing source call. Low or unknown confidence
+retains the reported genotype and quality with unresolved target dosage. Exact
+positive observations also retain their source confidence separately from identity.
+
+A qualified all-reference GT at a multi-base REF supports an SNV at the verified
+first REF base in both VCF and gVCF. The complete source REF must match the verified
+reference, and overlaps, partial GT and insufficient quality veto confirmation.
+Interior reference projection requires a pure gVCF reference-confidence row;
+concrete indel ALT or structural END alone does not establish that coverage.
+
 Gene callers may use `observed_only=True` after resolving public gene annotations.
 The inventory counts all exact observed candidates before assessing at most 100
 prioritized targets. Returned, omitted and partial counts describe that bound;

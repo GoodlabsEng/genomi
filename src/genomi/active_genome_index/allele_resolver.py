@@ -275,7 +275,7 @@ class _OriginalSource:
         self.handle = stack.enter_context(BGZFile(str(source), "rb"))
         self.cache = {}
 
-    def record(self, indexed: dict, *, aliases: set[str], position: int | None,
+    def record(self, indexed: dict, *, aliases: set[str], position: int,
                deadline: float, budget: list[int]) -> dict:
         remaining_time(deadline)
         if indexed.get("sample_index") != 0:
@@ -319,9 +319,6 @@ class _OriginalSource:
                           or record["ref"] != indexed["ref"]):
                 raise AlleleResolutionUnavailable("source_offset_mismatch")
             first = False
-            if position is None:
-                self.cache[offset] = record
-                return {**record, "record_rowid": indexed["record_rowid"]}
             if record["chrom"] not in aliases or record["pos"] > position:
                 break
             if record["end"] >= position:
@@ -384,6 +381,8 @@ def _reference_status(records: list[dict], assessment: dict, target: dict, *,
     if assessment.get("quality") != "pass":
         reasons = assessment.get("quality_reasons", [])
         return "unavailable", reasons[0] if reasons else "source_quality_insufficient"
+    # All-reference GT supports the validated first REF base in either format.
+    # Interior projection requires a genuine gVCF reference-confidence row.
     if target["pos"] > record["pos"]:
         if source_format != "gvcf":
             return "unavailable", "plain_vcf_reference_projection_unsupported"
@@ -586,12 +585,14 @@ def _resolve_target(connection: sqlite3.Connection, target: dict, hits: list[dic
                           reference_reason=None if dosage is not None and dosage > 0 else "target_dosage_unresolved")
             return result
         if array:
+            # Zero inference requires the requested biallelic model. Literal
+            # positive array observations, including third alleles, are handled above.
             if (
                 len(target["ref"]) != 1
                 or len(target["alt"]) != 1
                 or target["ref"] not in "ACGT"
                 or target["alt"] not in "ACGT"
-                or any(base not in "ACGT" for base in assessment["alleles"])
+                or any(base not in {target["ref"], target["alt"]} for base in assessment["alleles"])
             ):
                 result["reference_reason"] = "array_allele_model_unsupported"
             else:
@@ -609,11 +610,16 @@ def _resolve_target(connection: sqlite3.Connection, target: dict, hits: list[dic
             return result
         # A complete simple source genotype can report another ALT at this site.
         # Projection of an MNV or indel cannot supply target dosage or absence.
-        if all(record["pos"] == target["pos"] and record["ref"].upper() == target["ref"]
+        if len(target["ref"]) == len(target["alt"]) == 1 and all(
+               record["pos"] == target["pos"] and record["ref"].upper() == target["ref"]
                and len(record["ref"]) == 1
                and all(len(allele) == 1 for allele in assessment["alleles"])
                for record in records):
-            result.update(status="not_observed", target_dosage=0)
+            if assessment.get("quality") == "pass":
+                result.update(status="not_observed", target_dosage=0)
+            else:
+                reasons = assessment.get("quality_reasons", [])
+                result["reference_reason"] = reasons[0] if reasons else "source_quality_insufficient"
         else:
             result["reference_reason"] = "sequence_allele_not_identical"
             projection = _site_projection(records, target)

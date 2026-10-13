@@ -39,6 +39,9 @@ class SourceDetection:
     reference_build: str | None = None
     member_name: str | None = None
     provider: str | None = None
+    array_dialect: str | None = None
+    reference_validation: dict | None = None
+    array_call_summary: dict | None = None
 
 
 # Provider tags surfaced for VCF deliverables from named sequencing services.
@@ -102,6 +105,15 @@ def detect_source(source: str | Path) -> SourceDetection:
             if detection.source_format == "fastq" and member_name is not None:
                 member_name = _validated_archive_fastq_r1_member(source_path, member_name)
             return replace(detection, member_name=member_name)
+
+    from .nucleus_text import looks_like_nucleus_text, validate_nucleus_text_source
+    if looks_like_nucleus_text(probe.lines):
+        validated = validate_nucleus_text_source(source_path, member_name=member_name)
+        return SourceDetection(
+            source_format="nucleus", source_kind="consumer_genotype_array",
+            reference_build="GRCh37", member_name=member_name,
+            array_dialect="nucleus_snp_text", **validated,
+        )
 
     if _looks_like_complete_genomics(probe.lines):
         raise ValueError(

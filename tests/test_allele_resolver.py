@@ -173,9 +173,7 @@ def array_unknown_target(name, ref, alt):
     row = envelope['results'][0]
     assert envelope['relevant_target_ordinals'] == [], envelope
     assert row['reference_reason'] == 'array_allele_model_unsupported', row
-    assert row['call_assessment']['alleles'] == ['C', 'C'], row
-    assert row['source_records'][0]['genotype'] == 'CC', row
-    return status(row, 'unavailable', False, None, 'called')
+    return status(row, 'unavailable', False, None, 'unresolved')
 run('array_unknown_reference_does_not_invent_absence', lambda : array_unknown_target('array_unknown_ref', 'N', 'C'))
 run('array_unknown_alternate_is_unsupported', lambda : array_unknown_target('array_unknown_alt', 'A', 'N'))
 

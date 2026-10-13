@@ -28,6 +28,7 @@ from ..record_kinds import (
     array_record_kind,
 )
 from .detection import SourceDetection
+from ..array_genotypes import classify_array_genotype
 
 JsonObject = dict[str, Any]
 
@@ -41,8 +42,10 @@ def _array_record_row(
     source_format: str,
 ) -> tuple[Any, ...]:
     genotype = row["genotype"]
+    call = classify_array_genotype(genotype)
+    is_called = is_called and call.status == "called"
     record_kind = array_record_kind(is_called=is_called)
-    observed_alleles = list(genotype) if is_called else None
+    observed_alleles = list(call.alleles) if is_called else None
     return (
         row["chrom"],
         _chrom_sort(row["chrom"]),
@@ -176,6 +179,9 @@ def _insert_source_active_genome_index_metadata(
         "variants_complete": False,
         "reference_complete": None,
     }
+    if detection.array_dialect is not None:
+        values["array_dialect"] = detection.array_dialect
+        values["reference_validation"] = detection.reference_validation
     connection.executemany(
         "insert into metadata(key, value) values(?, ?)",
         [(key, json.dumps(value, sort_keys=True)) for key, value in values.items()],
@@ -283,6 +289,18 @@ def _cached_array_active_genome_index_if_usable(
     if metadata.get("genome_build") != genome_build:
         return None
     if metadata.get("max_records") != max_records:
+        return None
+    summary = metadata.get("array_call_summary")
+    summary_keys = {"total_rows", "supported_single_base_calls", "incomplete_calls", "unsupported_calls"}
+    if (not isinstance(summary, dict) or set(summary) != summary_keys
+            or any(type(value) is not int or value < 0 for value in summary.values())
+            or summary["total_rows"] != stats.get("total_records")
+            or summary["total_rows"] != sum(summary[key] for key in summary_keys - {"total_rows"})):
+        return None
+    if detection.array_dialect and (
+            metadata.get("array_dialect") != detection.array_dialect
+            or metadata.get("reference_validation") != detection.reference_validation
+            or (max_records is None and summary != detection.array_call_summary)):
         return None
     if metadata.get("active_genome_index_build_status") != ACTIVE_GENOME_INDEX_BUILD_STATUS_COMPLETED:
         return None

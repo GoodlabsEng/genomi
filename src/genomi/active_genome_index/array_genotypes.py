@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import re
+from dataclasses import dataclass
 from typing import Any
 
 from .record_kinds import RECORD_KIND_ARRAY_CALL, RECORD_KIND_ARRAY_NO_CALL
@@ -9,6 +11,38 @@ JsonObject = dict[str, Any]
 
 ARRAY_NO_CALLS = {"", ".", "--", "00", "NN"}
 SUPPORTED_ARRAY_BASES = {"A", "C", "G", "T", "I", "D"}
+
+
+@dataclass(frozen=True)
+class ArrayGenotypeCall:
+    raw_genotype: Any
+    alleles: tuple[str, ...]
+    status: str
+    snp_eligible: bool
+
+
+def classify_array_genotype(genotype: Any) -> ArrayGenotypeCall:
+    """Keep the complete source call: a missing or complex token vetoes SNP evidence."""
+    text = str(genotype or "").strip().upper()
+    if not text or text in ARRAY_NO_CALLS:
+        return ArrayGenotypeCall(genotype, (text,) if text else (), "no_call", False)
+    if "/" in text or "|" in text:
+        alleles = tuple(re.split(r"[/|]", text))
+    elif len(text) in {1, 2} and all(base in SUPPORTED_ARRAY_BASES | {"N", "0", ".", "-"} for base in text):
+        alleles = tuple(text)
+    else:
+        alleles = (text,)
+    if any(allele in {"", ".", "-", "--", "0", "00", "N", "NN"} for allele in alleles):
+        return ArrayGenotypeCall(genotype, alleles, "no_call", False)
+    complete = 1 <= len(alleles) <= 2 and all(allele in SUPPORTED_ARRAY_BASES for allele in alleles)
+    status = "called" if complete else "unresolved"
+    snp_eligible = complete and all(allele in "ACGT" for allele in alleles)
+    return ArrayGenotypeCall(genotype, alleles, status, snp_eligible)
+
+
+def array_snp_call(genotype: Any, observed_alleles: Any) -> bool:
+    call = classify_array_genotype(genotype)
+    return call.snp_eligible and tuple(_observed_alleles(observed_alleles)) == call.alleles
 
 
 def is_array_genotype_record(record: JsonObject) -> bool:
@@ -20,10 +54,13 @@ def array_genotype_bases(record: JsonObject) -> list[str] | None:
         return None
     if str(record.get("filter") or "") not in {"PASS", "."}:
         return None
+    call = classify_array_genotype(record.get("genotype"))
+    if call.status != "called":
+        return None
     bases = _observed_alleles(record.get("observed_alleles"))
     if not bases:
         return None
-    if any(base not in SUPPORTED_ARRAY_BASES for base in bases):
+    if tuple(bases) != call.alleles:
         return None
     return bases
 
@@ -32,11 +69,10 @@ def called_genotype_tokens(genotype: Any) -> list[str]:
     text = str(genotype or "").strip().upper()
     if not text:
         return []
-    if "/" in text or "|" in text:
-        return [allele for allele in text.replace("|", "/").split("/") if allele not in {"", "."}]
-    if len(text) in {1, 2} and all(base in SUPPORTED_ARRAY_BASES for base in text):
-        return list(text)
-    return [text]
+    if re.fullmatch(r"\d+(?:[/|]\d+)*", text):
+        return re.split(r"[/|]", text)
+    call = classify_array_genotype(genotype)
+    return list(call.alleles) if call.status == "called" else []
 
 
 def count_array_allele(

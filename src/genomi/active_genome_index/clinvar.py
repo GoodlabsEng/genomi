@@ -11,6 +11,7 @@ from ..clinvar_match_model import (
     MATCH_BASIS_MULTIALLELIC_ALT,
 )
 from .record_kinds import RECORD_KIND_ARRAY_CALL, RECORD_KIND_VARIANT_CALL
+from .array_genotypes import array_snp_call
 from .reader import ActiveGenomeIndexReader
 
 
@@ -57,6 +58,7 @@ def stage_clinvar_match_records(
     """Materialize the AGI rows ClinVar matching may read into temp tables."""
 
     reader.ensure_ready()
+    connection.create_function("array_snp_call", 2, array_snp_call, deterministic=True)
     alias = "_agi_clinvar_records"
     reader.attach_to(connection, alias)
     try:
@@ -181,6 +183,7 @@ def stage_clinvar_match_records(
             from temp.selected_active_genome_index_agi_records as r
             join json_each(r.observed_alleles) as observed
             where r.record_kind = ?
+              and array_snp_call(r.genotype,r.observed_alleles)
               and upper(observed.value) in ('A', 'C', 'G', 'T')
             """,
             (

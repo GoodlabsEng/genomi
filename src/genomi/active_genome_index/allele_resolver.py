@@ -30,6 +30,7 @@ from typing import TYPE_CHECKING
 
 from ._agi_query import _index_record_to_dict
 from .observations import observed_alleles_from_vcf_genotype
+from .array_genotypes import classify_array_genotype
 from .vcf import parse_record_fields
 
 if TYPE_CHECKING:
@@ -143,11 +144,12 @@ def assess_call(record: dict, *, array: bool = False) -> dict:
             depth=None, genotype_quality=None, minimum_depth=None,
             record_filter=None, sample_filter=None,
         )
-        if record.get("record_kind") != "array_call" or not isinstance(genotype, str):
+        call = classify_array_genotype(genotype)
+        if call.status == "unresolved" or (call.status == "called" and not call.snp_eligible):
+            return {**result, "status": "unresolved", "reason": "array_genotype_unsupported_for_snp"}
+        if call.status == "no_call" or record.get("record_kind") != "array_call":
             return result
-        called = list(genotype.upper())
-        if not 1 <= len(called) <= 2 or any(base not in "ACGTID" for base in called):
-            return {**result, "status": "unresolved"}
+        called = list(call.alleles)
         return {
             **result, "status": "called", "ploidy": len(called), "alleles": called,
             "zygosity": "haploid" if len(called) == 1 else
@@ -492,6 +494,13 @@ def _resolve_target(connection: sqlite3.Connection, target: dict, hits: list[dic
         result["reference_reason"] = "unsupported_target_contig"
         return result
     identity_anchor = target["ref"] == target["alt"] and bool(target.get("rsid"))
+    array = source_format in ARRAY_FORMATS
+    if array and not identity_anchor and (
+            len(target["ref"]) != 1 or len(target["alt"]) != 1
+            or target["ref"] not in "ACGT" or target["alt"] not in "ACGT"):
+        result["exact_match"] = False
+        result["reference_reason"] = "array_allele_model_unsupported"
+        return result
     if identity_anchor:
         result["exact_match"] = False
     if not identity_anchor and (not SEQUENCE_PATTERN.fullmatch(target["ref"])
@@ -505,7 +514,6 @@ def _resolve_target(connection: sqlite3.Connection, target: dict, hits: list[dic
                                     target["pos"] - 1 + len(target["ref"])).upper()
             if reference != target["ref"]:
                 raise AlleleResolutionUnavailable("target_reference_sequence_mismatch")
-        array = source_format in ARRAY_FORMATS
         aliases = {row[0] for row in connection.execute(
             "select alias from chromosome_aliases where canonical=?", (canonical,)
         )}

@@ -1,0 +1,73 @@
+{
+  "version": 1,
+  "minimumCoordinateMarkers": 4,
+  "minimumCoordinateChromosomes": 3,
+  "minimumOrientationMarkers": 2,
+  "minimumOrientationChromosomes": 2,
+  "markers": [
+    {
+      "rsid": "rs762551",
+      "chromosome": "15",
+      "grch37Position": 75041917,
+      "grch38Position": 74749576,
+      "forwardAlleles": ["A", "C", "G"],
+      "sourceUrl": "https://api.ncbi.nlm.nih.gov/variation/v0/refsnp/762551"
+    },
+    {
+      "rsid": "rs4988235",
+      "chromosome": "2",
+      "grch37Position": 136608646,
+      "grch38Position": 135851076,
+      "forwardAlleles": ["A", "C", "G", "T"],
+      "sourceUrl": "https://api.ncbi.nlm.nih.gov/variation/v0/refsnp/4988235"
+    },
+    {
+      "rsid": "rs1800562",
+      "chromosome": "6",
+      "grch37Position": 26093141,
+      "grch38Position": 26092913,
+      "forwardAlleles": ["A", "G", "T"],
+      "sourceUrl": "https://api.ncbi.nlm.nih.gov/variation/v0/refsnp/1800562"
+    },
+    {
+      "rsid": "rs1799945",
+      "chromosome": "6",
+      "grch37Position": 26091179,
+      "grch38Position": 26090951,
+      "forwardAlleles": ["C", "G", "T"],
+      "sourceUrl": "https://api.ncbi.nlm.nih.gov/variation/v0/refsnp/1799945"
+    },
+    {
+      "rsid": "rs429358",
+      "chromosome": "19",
+      "grch37Position": 45411941,
+      "grch38Position": 44908684,
+      "forwardAlleles": ["C", "T"],
+      "sourceUrl": "https://api.ncbi.nlm.nih.gov/variation/v0/refsnp/429358"
+    },
+    {
+      "rsid": "rs7412",
+      "chromosome": "19",
+      "grch37Position": 45412079,
+      "grch38Position": 44908822,
+      "forwardAlleles": ["C", "T"],
+      "sourceUrl": "https://api.ncbi.nlm.nih.gov/variation/v0/refsnp/7412"
+    },
+    {
+      "rsid": "rs1801133",
+      "chromosome": "1",
+      "grch37Position": 11856378,
+      "grch38Position": 11796321,
+      "forwardAlleles": ["A", "C", "G", "T"],
+      "sourceUrl": "https://api.ncbi.nlm.nih.gov/variation/v0/refsnp/1801133"
+    },
+    {
+      "rsid": "rs9939609",
+      "chromosome": "16",
+      "grch37Position": 53820527,
+      "grch38Position": 53786615,
+      "forwardAlleles": ["A", "T"],
+      "sourceUrl": "https://api.ncbi.nlm.nih.gov/variation/v0/refsnp/9939609"
+    }
+  ]
+}

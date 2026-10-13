@@ -11,6 +11,7 @@ import re
 import sqlite3
 from collections.abc import Iterable, Mapping
 from typing import Any
+from .array_genotypes import array_snp_call
 
 NORMALIZED_ALLELE_SCHEMA_VERSION = 1
 _SHA256 = re.compile(r"[a-f0-9]{64}")
@@ -78,6 +79,7 @@ def write_normalized_allele_index(
     expected_aliases = dict(expected_aliases)
     if not expected_aliases or any(not k or not v for k, v in expected_aliases.items()):
         raise ValueError("invalid_normalized_allele_aliases")
+    connection.create_function("array_snp_call", 2, array_snp_call, deterministic=True)
     connection.execute("savepoint normalized_allele_write")
     try:
         connection.execute("create table chromosome_aliases(alias text primary key, canonical text not null)")
@@ -122,6 +124,7 @@ def write_normalized_allele_index(
                 where alt.key=a.original_allele_index-1 and alt.value=a.original_alt
                       and a.original_alt!=upper(r.ref)))
             or (a.kind='array_call' and (a.original_allele_index is not null
+                or not array_snp_call(r.genotype,r.observed_alleles)
                 or a.original_alt not in ('A','C','G','T') or a.pos!=r.pos or a.alt!=a.original_alt))
             limit 1""").fetchone()
         if invalid:

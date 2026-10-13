@@ -53,7 +53,7 @@ class ArrayGenotypeClassificationTests(unittest.TestCase):
         self.assertEqual(classify_array_genotype("./A").alleles, (".", "A"))
 
     def test_complex_symbolic_and_legacy_indel_tokens_cannot_establish_snp_evidence(self):
-        for genotype in ("A/AT", "AT/A", "AT/AT", "A/<DEL>", "*/A", "I/D", "ID", "A/G/T"):
+        for genotype in ("A/AT", "AT/A", "AT/AT", "B/B", "XYZ/A", "A/<DEL>", "*/A", "I/D", "ID", "A/G/T"):
             with self.subTest(genotype=genotype):
                 call = classify_array_genotype(genotype)
                 self.assertFalse(call.snp_eligible)
@@ -107,6 +107,21 @@ class NucleusSnpTextTests(unittest.TestCase):
             db.execute("update metadata set value='null' where key='reference_validation'")
             db.commit()
         self.assertEqual(parse_source(self.source)["steps"][0]["result"]["status"], "completed")
+
+    def test_alphabetic_unsupported_calls_are_retained_without_snp_keys(self):
+        additions = ["rs900000008\tCHR1\t80\tB/B\n", "rs900000009\tchr1\t90\tXYZ/A\n"]
+        self.write(compatible_rows() + additions)
+        parsed = parse_source(self.source)
+        index = Path(parsed["outputs"]["agi_path"])
+        reader = ActiveGenomeIndexReader(index, ActiveGenomeIndexNeed.NONE, readiness={"complete": True}, genome_build="GRCh37")
+        with sqlite3.connect(index) as db:
+            db.row_factory = sqlite3.Row
+            records = list(db.execute("select chrom,genotype,observed_alleles from records where pos in (80,90) order by pos"))
+            self.assertEqual([tuple(row) for row in records], [("1", "B/B", None), ("1", "XYZ/A", None)])
+            reader.stage_clinvar_match_records(db)
+            self.assertEqual(db.execute("select count(*) from temp.selected_active_genome_index_records where pos in (80,90)").fetchone()[0], 0)
+            summary = json.loads(db.execute("select value from metadata where key='array_call_summary'").fetchone()[0])
+            self.assertEqual(summary["unsupported_calls"], 2)
 
     def test_full_file_validation_reads_markers_beyond_detection_probe(self):
         self.write(["rs900000001\t1\t10\tA/G\n"] * 15000 + compatible_rows())

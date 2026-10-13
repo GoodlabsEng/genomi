@@ -12,8 +12,8 @@ from .text_io import _open_text_source
 MARKER_DEFINITIONS = json.loads(Path(__file__).with_name("nucleus_text_markers.json").read_text())
 _MARKERS = {marker["rsid"]: marker for marker in MARKER_DEFINITIONS["markers"]}
 _COMPLEMENT = str.maketrans("ACGT", "TGCA")
-_CHROMOSOME = re.compile(r"(?:chr)?(?:[1-9]|1[0-9]|2[0-2]|X|Y|M|MT)")
-_TOKEN = re.compile(r"(?:[ACGTNID]+|\.|-|--|0|00|NN|\*|<[A-Za-z0-9:_.*+\-]+>)", re.IGNORECASE)
+_CHROMOSOME = re.compile(r"(?:chr)?(?:[1-9]|1[0-9]|2[0-2]|X|Y|M|MT)", re.IGNORECASE)
+_TOKEN = re.compile(r"(?:[A-Z]+|\.|-|--|0|00|NN|\*|<[A-Za-z0-9:_.*+\-]+>)", re.IGNORECASE)
 
 
 def _invalid(reason: str) -> ValueError:
@@ -39,7 +39,7 @@ def iter_nucleus_text_rows(handle: TextIO) -> Iterator[dict]:
                 or len(pos_text) > 16 or int(pos_text) > 2**53 - 1
                 or len(tokens) != 2 or any(not _TOKEN.fullmatch(token) for token in tokens)):
             raise _invalid("layout_invalid")
-        chrom = chrom.removeprefix("chr")
+        chrom = chrom.lower().removeprefix("chr").upper()
         if chrom == "M":
             chrom = "MT"
         yield {"rsid": rsid, "chrom": chrom, "pos": int(pos_text), "genotype": genotype}

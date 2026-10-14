@@ -179,9 +179,6 @@ def _insert_source_active_genome_index_metadata(
         "variants_complete": False,
         "reference_complete": None,
     }
-    if detection.array_dialect is not None:
-        values["array_dialect"] = detection.array_dialect
-        values["reference_validation"] = detection.reference_validation
     connection.executemany(
         "insert into metadata(key, value) values(?, ?)",
         [(key, json.dumps(value, sort_keys=True)) for key, value in values.items()],
@@ -296,11 +293,6 @@ def _cached_array_active_genome_index_if_usable(
             or any(type(value) is not int or value < 0 for value in summary.values())
             or summary["total_rows"] != stats.get("total_records")
             or summary["total_rows"] != sum(summary[key] for key in summary_keys - {"total_rows"})):
-        return None
-    if detection.array_dialect and (
-            metadata.get("array_dialect") != detection.array_dialect
-            or metadata.get("reference_validation") != detection.reference_validation
-            or (max_records is None and summary != detection.array_call_summary)):
         return None
     if metadata.get("active_genome_index_build_status") != ACTIVE_GENOME_INDEX_BUILD_STATUS_COMPLETED:
         return None

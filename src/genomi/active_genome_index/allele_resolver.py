@@ -45,7 +45,7 @@ MIN_GENOTYPE_QUALITY = 20
 GENOTYPE_PATTERN = re.compile(r"(?:[0-9]+|\.)(?:[/|](?:[0-9]+|\.))*\Z")
 SEQUENCE_PATTERN = re.compile(r"[ACGTN]+\Z")
 CALLED_SEQUENCE_PATTERN = re.compile(r"[ACGT]+\Z")
-ARRAY_FORMATS = frozenset(("23andme", "nucleus"))
+ARRAY_FORMATS = frozenset({"23andme"})
 
 
 class AlleleResolutionUnavailable(ValueError):

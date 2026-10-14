@@ -1,6 +1,7 @@
 """Derived identity must retain the source binding and never overwrite original calls."""
 import sqlite3
 import unittest
+from genomi.active_genome_index.array_genotypes import classify_array_genotype, called_genotype_tokens
 from genomi.active_genome_index.normalized_alleles import write_normalized_allele_index, normalized_allele_index_metadata
 from genomi.active_genome_index.allele_resolver import assess_call, assess_overlapping_calls
 
@@ -73,5 +74,60 @@ class SourceAssessmentTests(unittest.TestCase):
         self.assertEqual(result['source_call_count'], 2)
         self.assertIsNone(result['phased'])
         self.assertEqual([c['raw_genotype'] for c in result['source_calls']], ['0|1', '1|0'])
+class ArrayGenotypeClassificationTests(unittest.TestCase):
+    def test_supported_pairs_preserve_original_and_tokens(self):
+        for genotype, alleles in (("A/G", ("A", "G")), ("C/C", ("C", "C")),
+                                  ("AG", ("A", "G")), ("c/g", ("C", "G"))):
+            with self.subTest(genotype=genotype):
+                call = classify_array_genotype(genotype)
+                self.assertEqual(call.raw_genotype, genotype)
+                self.assertEqual(call.alleles, alleles)
+                self.assertEqual(call.status, "called")
+                self.assertTrue(call.snp_eligible)
+
+    def test_missing_tokens_are_not_complete_haploid_calls(self):
+        for genotype in ("./A", "A/.", "./.", "N/N", "00/A", "NN/A", "A/-", "--/--", "A0", "AN", "A-", "--", ""):
+            with self.subTest(genotype=genotype):
+                call = classify_array_genotype(genotype)
+                self.assertEqual(call.status, "no_call")
+                self.assertFalse(call.snp_eligible)
+                self.assertEqual(called_genotype_tokens(genotype), [])
+                assessed = assess_call({"record_kind": "array_no_call", "genotype": genotype}, array=True)
+                self.assertEqual(assessed["status"], "no_call")
+                self.assertEqual(assessed["alleles"], [])
+        self.assertEqual(classify_array_genotype("./A").alleles, (".", "A"))
+
+    def test_complex_symbolic_and_legacy_indel_tokens_cannot_establish_snp_evidence(self):
+        for genotype in ("A/AT", "AT/A", "AT/AT", "B/B", "XYZ/A", "A/<DEL>", "*/A", "I/D", "ID", "A/G/T"):
+            with self.subTest(genotype=genotype):
+                call = classify_array_genotype(genotype)
+                self.assertFalse(call.snp_eligible)
+                assessed = assess_call({"record_kind": "array_call", "genotype": genotype}, array=True)
+                self.assertEqual(assessed["status"], "unresolved")
+                self.assertEqual(assessed["raw_genotype"], genotype)
+        self.assertEqual(classify_array_genotype("A/AT").alleles, ("A", "AT"))
+        self.assertEqual(classify_array_genotype("ID").status, "called")
+
+    def test_numeric_vcf_helpers_preserve_complete_calls_and_reject_partial(self):
+        for genotype, tokens in (("0|1", ["0", "1"]), ("1", ["1"]), ("0/2", ["0", "2"]),
+                                 ("1/.", []), ("./0", [])):
+            self.assertEqual(called_genotype_tokens(genotype), tokens)
+
+
+    def test_normalized_writer_rejects_forged_partial_or_complex_components(self):
+        for genotype, observed in (("A/AT", '["A", "AT"]'), ("AT/A", '["AT", "A"]'),
+                                   ("./A", '["A"]'), ("A/G", '["A", "AT"]')):
+            with self.subTest(genotype=genotype), sqlite3.connect(":memory:") as db:
+                db.executescript("create table metadata(key text primary key,value text);"
+                                 "create table records(chrom text,pos integer,record_kind text,ref text,alt text,genotype text,observed_alleles text);")
+                db.execute("insert into records values('1',10,'array_call','.','.',?,?)", (genotype, observed))
+                with self.assertRaisesRegex(ValueError, "source_allele_mismatch"):
+                    write_normalized_allele_index(db, expected_aliases={"1": "chr1"},
+                                                  normalized_rows=[("1:A:array", "chr1", 10, ".", "A", 1, "A", None, "array_allele", "array_call")],
+                                                  metadata={"schemaVersion": 1, "genomeBuild": "GRCh37", "normalizationVersion": "synthetic",
+                                                            "referenceSha256": "a" * 64, "sourceSha256": "b" * 64,
+                                                            "excludedContigs": [], "observedAlleleCount": 1})
+                self.assertIsNone(db.execute("select 1 from metadata where key='normalized_allele_index'").fetchone())
+
 if __name__ == '__main__':
     unittest.main()

@@ -40,7 +40,6 @@ from .detection import (
     detect_source,
 )
 from .text_io import _clean_array_chrom, _effective_array_build, _open_text_source
-from .nucleus_text import iter_nucleus_text_rows
 
 
 def _array_record_stats(*, total: int, called: int, no_call: int, rsid_count: int) -> JsonObject:
@@ -166,9 +165,6 @@ def _iter_livingdna_rows(handle: TextIO) -> Iterator[JsonObject]:
 
 
 _CONSUMER_ARRAY_SPECS: dict[str, _ConsumerArraySpec] = {
-    "nucleus": _ConsumerArraySpec(
-        row_iterator=_iter_23andme_rows,
-    ),
     "23andme": _ConsumerArraySpec(
         row_iterator=_iter_23andme_rows,
     ),
@@ -206,10 +202,6 @@ def parse_consumer_array_source(
     if spec is None:
         raise ValueError(f"no consumer-array spec for source_format: {detection.source_format}")
     fmt = detection.source_format
-    if detection.array_dialect == "nucleus_snp_text":
-        if genome_build not in {"auto", "GRCh37"}:
-            raise ValueError("nucleus_text_build_conflict: Upload a VCF that declares its reference build.")
-        spec = _ConsumerArraySpec(row_iterator=iter_nucleus_text_rows)
     effective_build = _effective_array_build(genome_build, detection.reference_build)
     project_dir = run_project_dir_for_source(source_path, source_format=fmt)
     work_dir = run_work_dir_for_source(source_path, source_format=fmt)
@@ -254,7 +246,7 @@ def parse_consumer_array_source(
         "source_format": fmt,
         "source_kind": "consumer_genotype_array",
         "source_member": detection.member_name,
-        "provider": detection.provider if detection.array_dialect else detection.provider or fmt,
+        "provider": detection.provider or fmt,
         "sample_slug": sample_slug_from_source(source_path, source_format=fmt),
         "genome_build": effective_build,
         "evidence_db": str(db_path),
@@ -375,8 +367,6 @@ def _populate_consumer_array_records(
         _insert_source_record_batch(connection, batch)
     summary = {"total_rows": total, "supported_single_base_calls": supported_single_base,
                "incomplete_calls": incomplete, "unsupported_calls": unsupported}
-    if max_records is None and detection.array_call_summary is not None and summary != detection.array_call_summary:
-        raise ValueError("nucleus_text_row_count_mismatch")
     connection.execute("insert into metadata values('array_call_summary',?)", (json.dumps(summary, sort_keys=True),))
     return (
         _array_record_stats(total=total, called=called, no_call=no_call, rsid_count=rsid_count),

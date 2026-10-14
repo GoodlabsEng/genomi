@@ -178,31 +178,29 @@ run('array_unknown_reference_does_not_invent_absence', lambda : array_unknown_ta
 run('array_unknown_alternate_is_unsupported', lambda : array_unknown_target('array_unknown_alt', 'A', 'N'))
 
 def array_negative_requires_target_alleles():
-    for provider in ('23andme', 'nucleus'):
-        for genotype in ('TC', 'AC'):
-            name = f'array_negative_{provider}_{genotype}'
-            (resolve, *_) = fixture(name, [], provider=provider,
-                                   array=[('rs1004', 200, genotype)])
-            row = resolve([target(200, alt='G', rsid='rs1004')])['results'][0]
-            assert row['reference_reason'] == 'array_allele_model_unsupported', row
-            assert row['call_assessment']['alleles'] == list(genotype), row
-            assert row['call_assessment']['quality'] == 'unknown', row
-            assert row['source_records'][0]['genotype'] == genotype, row
-            assert 'reference_scope' not in row, row
-            status(row, 'unavailable', False, None, 'called')
+    for genotype in ('TC', 'AC'):
+        name = f'array_negative_{genotype}'
+        (resolve, *_) = fixture(name, [], provider='23andme',
+                               array=[('rs1004', 200, genotype)])
+        row = resolve([target(200, alt='G', rsid='rs1004')])['results'][0]
+        assert row['reference_reason'] == 'array_allele_model_unsupported', row
+        assert row['call_assessment']['alleles'] == list(genotype), row
+        assert row['call_assessment']['quality'] == 'unknown', row
+        assert row['source_records'][0]['genotype'] == genotype, row
+        assert 'reference_scope' not in row, row
+        status(row, 'unavailable', False, None, 'called')
 run('array_negative_requires_target_alleles', array_negative_requires_target_alleles)
 
 def array_literal_positives_keep_third_alleles():
-    for provider in ('23andme', 'nucleus'):
-        for genotype in ('AG', 'CG', 'TG'):
-            name = f'array_positive_{provider}_{genotype}'
-            (resolve, *_) = fixture(name, [], provider=provider,
-                                   array=[('rs1004', 200, genotype)])
-            row = resolve([target(200, alt='G', rsid='rs1004')])['results'][0]
-            assert row['call_assessment']['alleles'] == list(genotype), row
-            assert row['call_assessment']['quality'] == 'unknown', row
-            assert row['source_records'][0]['genotype'] == genotype, row
-            status(row, 'observed', True, 1, 'called')
+    for genotype in ('AG', 'CG', 'TG'):
+        name = f'array_positive_{genotype}'
+        (resolve, *_) = fixture(name, [], provider='23andme',
+                               array=[('rs1004', 200, genotype)])
+        row = resolve([target(200, alt='G', rsid='rs1004')])['results'][0]
+        assert row['call_assessment']['alleles'] == list(genotype), row
+        assert row['call_assessment']['quality'] == 'unknown', row
+        assert row['source_records'][0]['genotype'] == genotype, row
+        status(row, 'observed', True, 1, 'called')
 run('array_literal_positives_keep_third_alleles', array_literal_positives_keep_third_alleles)
 
 def other_snv_cannot_supply_indel_zero():

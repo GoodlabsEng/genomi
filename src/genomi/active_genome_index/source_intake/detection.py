@@ -7,7 +7,7 @@ is by peeling those wrappers (see ``text_io``) and reading the *content*:
 - binary magic for alignment files (BAM's ``BAM\\x01`` inside its BGZF gzip,
   CRAM's ``CRAM`` magic), then
 - the first lines of the decompressed text for VCF/gVCF, FASTQ, and the
-  consumer genotype-array exports (23andMe / Nucleus / AncestryDNA /
+  consumer genotype-array exports (23andMe / AncestryDNA /
   MyHeritage / FamilyTreeDNA / Living DNA).
 
 Getting VCF-vs-gVCF or the wrapper wrong silently mis-parses exactly the large
@@ -39,9 +39,6 @@ class SourceDetection:
     reference_build: str | None = None
     member_name: str | None = None
     provider: str | None = None
-    array_dialect: str | None = None
-    reference_validation: dict | None = None
-    array_call_summary: dict | None = None
 
 
 # Provider tags surfaced for VCF deliverables from named sequencing services.
@@ -80,7 +77,7 @@ def detect_source(source: str | Path) -> SourceDetection:
 
     Transparently peels gzip/bzip2/xz compression and zip/tar archives, then
     classifies the payload as VCF, gVCF, BAM, paired-end FASTQ, or a raw
-    consumer genotype array (23andMe, Nucleus, AncestryDNA, MyHeritage,
+    consumer genotype array (23andMe, AncestryDNA, MyHeritage,
     FamilyTreeDNA, Living DNA). Callers do not supply the format; if you
     already know it, you do not need this function.
     """
@@ -106,15 +103,6 @@ def detect_source(source: str | Path) -> SourceDetection:
                 member_name = _validated_archive_fastq_r1_member(source_path, member_name)
             return replace(detection, member_name=member_name)
 
-    from .nucleus_text import looks_like_nucleus_text, validate_nucleus_text_source
-    if looks_like_nucleus_text(probe.lines):
-        validated = validate_nucleus_text_source(source_path, member_name=member_name)
-        return SourceDetection(
-            source_format="nucleus", source_kind="consumer_genotype_array",
-            reference_build="GRCh37", member_name=member_name,
-            array_dialect="nucleus_snp_text", **validated,
-        )
-
     if _looks_like_complete_genomics(probe.lines):
         raise ValueError(
             "Complete Genomics var/masterVar file detected. Genomi does not ingest "
@@ -124,7 +112,7 @@ def detect_source(source: str | Path) -> SourceDetection:
     raise ValueError(
         "Could not detect the genome source type from its content. Supported sources: "
         "genome.computer .genome/1.0 bundles, VCF/gVCF, BAM, paired-end FASTQ, and raw genotype exports from 23andMe, "
-        "Nucleus, AncestryDNA, MyHeritage, FamilyTreeDNA (Family Finder), and Living DNA — "
+        "AncestryDNA, MyHeritage, FamilyTreeDNA (Family Finder), and Living DNA — "
         "compressed (gzip/bzip2/xz) or inside a zip/tar archive."
     )
 
@@ -335,22 +323,12 @@ class _ArraySignature:
     vendor_tokens: tuple[str, ...] = ()
     forbid_comments: bool = False
     header_in_comments: bool = False
-    whitespace_comment_header: bool = False
     accept_rs_data_row: bool = False
 
 
 # Order matters: providers that share a column header are disambiguated by a
 # required vendor token in the comment block (or by its absence, for FTDNA).
 _ARRAY_SIGNATURES: tuple[_ArraySignature, ...] = (
-    _ArraySignature(
-        "nucleus",
-        "nucleus",
-        "\t",
-        ("rsid", "chromosome", "position", "genotype"),
-        vendor_tokens=("nucleus genomics",),
-        header_in_comments=True,
-        whitespace_comment_header=True,
-    ),
     _ArraySignature(
         "23andme", None, "\t", ("rsid", "chromosome", "position", "genotype"),
         vendor_tokens=("23andme",), header_in_comments=True,
@@ -434,11 +412,6 @@ def _match_array(probe: _Probe, sig: _ArraySignature) -> SourceDetection | None:
     if not header_ok and sig.header_in_comments:
         needle = sig.delimiter.join(sig.header).lower()
         header_ok = any(comment.lstrip("# ").lower().startswith(needle) for comment in comments)
-    if not header_ok and sig.whitespace_comment_header:
-        header_ok = any(
-            tuple(comment.lstrip("# ").lower().split()[: len(sig.header)]) == sig.header
-            for comment in comments
-        )
     if not header_ok and sig.accept_rs_data_row and header is not None:
         header_ok = len(header) >= len(sig.header) and header[0].strip().lower().startswith("rs")
     if not header_ok:

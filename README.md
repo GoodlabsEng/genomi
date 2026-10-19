@@ -243,11 +243,10 @@ A projected base from a larger sequence change is distinct from an exact complet
 allele. Duplicate observations retain the weakest confidence and conflicting
 calls remain unresolved.
 
-Consumer-array calls use reported plus-strand letters. Exact positive target
-observations remain available when another called base is a third allele, such as
-CG against A>G. Zero or reference inference requires every called base to belong
-to the requested REF/ALT model. Unsupported comparisons retain the original
-genotype without inferring dosage or complementing letters.
+Consumer-array calls use reported plus-strand letters. Target dosage and reference
+inference require every called base to belong to the requested REF/ALT model.
+Unsupported comparisons retain the original genotype without inferring dosage or
+complementing letters.
 
 A different sequencing allele can establish zero target dosage only for a
 single-base requested REF/ALT and a passing source call. Low or unknown confidence

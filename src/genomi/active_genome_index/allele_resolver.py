@@ -457,7 +457,9 @@ def _target_dosage(hits: list[dict], records: list[dict], assessment: dict, targ
         return None
     if array:
         alleles = assessment.get("alleles", [])
-        return alleles.count(target["alt"]) if all(base in "ACGT" for base in alleles) else None
+        if any(base not in {target["ref"], target["alt"]} for base in alleles):
+            return None
+        return alleles.count(target["alt"])
     indexes_by_row = defaultdict(set)
     for hit in hits:
         index = hit.get("original_allele_index")
@@ -593,8 +595,7 @@ def _resolve_target(connection: sqlite3.Connection, target: dict, hits: list[dic
                           reference_reason=None if dosage is not None and dosage > 0 else "target_dosage_unresolved")
             return result
         if array:
-            # Zero inference requires the requested biallelic model. Literal
-            # positive array observations, including third alleles, are handled above.
+            # Both dosage and reference inference require the requested biallelic model.
             if (
                 len(target["ref"]) != 1
                 or len(target["alt"]) != 1

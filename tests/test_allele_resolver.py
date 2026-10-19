@@ -191,17 +191,20 @@ def array_negative_requires_target_alleles():
         status(row, 'unavailable', False, None, 'called')
 run('array_negative_requires_target_alleles', array_negative_requires_target_alleles)
 
-def array_literal_positives_keep_third_alleles():
-    for genotype in ('AG', 'CG', 'TG'):
-        name = f'array_positive_{genotype}'
+def array_dosage_requires_target_alleles():
+    for genotype, expected, dosage in (
+            ('CT', 'unavailable', None), ('GT', 'observed', 1), ('TT', 'observed', 2)):
+        name = f'array_dosage_{genotype}'
         (resolve, *_) = fixture(name, [], provider='23andme',
-                               array=[('rs1004', 200, genotype)])
-        row = resolve([target(200, alt='G', rsid='rs1004')])['results'][0]
+                               array=[('rs1000', 1000, genotype)],
+                               reference_overrides=[(1000, 'G')])
+        row = resolve([target(1000, ref='G', alt='T', rsid='rs1000')])['results'][0]
         assert row['call_assessment']['alleles'] == list(genotype), row
         assert row['call_assessment']['quality'] == 'unknown', row
         assert row['source_records'][0]['genotype'] == genotype, row
-        status(row, 'observed', True, 1, 'called')
-run('array_literal_positives_keep_third_alleles', array_literal_positives_keep_third_alleles)
+        assert row['reference_reason'] == ('target_dosage_unresolved' if dosage is None else None), row
+        status(row, expected, True, dosage, 'called')
+run('array_dosage_requires_target_alleles', array_dosage_requires_target_alleles)
 
 def other_snv_cannot_supply_indel_zero():
     for provider in ('vcf', 'gvcf'):
